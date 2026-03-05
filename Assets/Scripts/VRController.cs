@@ -11,11 +11,15 @@ public class HandMessage
     public float[] wristQuat;
     public float triggerState;
     public bool[] buttonState;
+    public bool isHandTracking;   // true=人手追踪, false=手柄追踪
+    public float[] jointPos;      // 24关节×3坐标=72个float，人手模式有效，手柄模式为空
     public HandMessage()
     {
         wristPos = new float[3];//position of the hand
         wristQuat = new float[4];//quaternion of the hand
         buttonState = new bool[5];//buttonState of B(Y)/A(X)/Thumbstick/IndexTrigger/HandTrigger
+        isHandTracking = false;
+        jointPos = null;
     }
 
     public void TransformToAlignSpace()
@@ -31,6 +35,19 @@ public class HandMessage
             wristQuat[1] = quaternion.x;
             wristQuat[2] = quaternion.y;
             wristQuat[3] = quaternion.z;
+
+            // 对 24 个关节位置同步做坐标变换，保持与 wristPos 同一坐标系
+            if (jointPos != null && jointPos.Length == 72)
+            {
+                for (int i = 0; i < 24; i++)
+                {
+                    Vector3 jp = Calibration.instance.GetPosition(new Vector3(
+                        jointPos[i * 3], jointPos[i * 3 + 1], jointPos[i * 3 + 2]));
+                    jointPos[i * 3]     = jp.x;
+                    jointPos[i * 3 + 1] = jp.y;
+                    jointPos[i * 3 + 2] = jp.z;
+                }
+            }
         }
     }
 }
@@ -88,6 +105,9 @@ public class VRController : MonoBehaviour
     public Transform controller_right;
     public Transform controller_left;
 
+    public OVRSkeleton skeleton_right;
+    public OVRSkeleton skeleton_left;
+
     public static Message message;
     public bool LRinverse = false;
 
@@ -97,6 +117,25 @@ public class VRController : MonoBehaviour
         showText.transform.parent.GetChild(1).GetComponent<TMPro.TextMeshProUGUI>().text = ip;
         message = new Message();
         Time.fixedDeltaTime = 1f / Hz;
+
+        // 未手动绑定时自动从场景中查找 OVRSkeleton
+        if (skeleton_right == null)
+            skeleton_right = controller_right.GetComponentInChildren<OVRSkeleton>();
+        if (skeleton_left == null)
+            skeleton_left = controller_left.GetComponentInChildren<OVRSkeleton>();
+        if (skeleton_right == null || skeleton_left == null)
+        {
+            // GetSkeletonType() 在部分 SDK 版本中不可访问，改用 GameObject 名称匹配
+            var all = FindObjectsOfType<OVRSkeleton>();
+            foreach (var s in all)
+            {
+                string n = s.gameObject.name.ToLower();
+                if (skeleton_right == null && n.Contains("right"))
+                    skeleton_right = s;
+                if (skeleton_left == null && n.Contains("left"))
+                    skeleton_left = s;
+            }
+        }
     }
 
     private void FixedUpdate()
@@ -181,6 +220,48 @@ public class VRController : MonoBehaviour
         message.rightHand.buttonState[2] = OVRInput.Get(OVRInput.RawButton.RThumbstick);
         message.rightHand.buttonState[3] = OVRInput.Get(OVRInput.RawButton.RIndexTrigger);
         message.rightHand.buttonState[4] = OVRInput.Get(OVRInput.RawButton.RHandTrigger);
+
+        // 追踪模式检测 + 关节数据采集
+        bool rightIsHand = skeleton_right != null && skeleton_right.IsDataValid;
+        bool leftIsHand  = skeleton_left  != null && skeleton_left.IsDataValid;
+        message.rightHand.isHandTracking = rightIsHand;
+        message.leftHand.isHandTracking  = leftIsHand;
+
+        if (rightIsHand)
+        {
+            if (message.rightHand.jointPos == null || message.rightHand.jointPos.Length != 72)
+                message.rightHand.jointPos = new float[72];
+            int i = 0;
+            foreach (var bone in skeleton_right.Bones)
+            {
+                if (i >= 24) break;
+                if (bone.Transform == null) { i++; continue; }  // 防止 Transform 未初始化
+                var p = bone.Transform.position;
+                message.rightHand.jointPos[i * 3]     = p.x;
+                message.rightHand.jointPos[i * 3 + 1] = p.y;
+                message.rightHand.jointPos[i * 3 + 2] = p.z;
+                i++;
+            }
+        }
+        else { message.rightHand.jointPos = new float[0]; }  // JsonUtility 不序列化 null，用空数组代替
+
+        if (leftIsHand)
+        {
+            if (message.leftHand.jointPos == null || message.leftHand.jointPos.Length != 72)
+                message.leftHand.jointPos = new float[72];
+            int i = 0;
+            foreach (var bone in skeleton_left.Bones)
+            {
+                if (i >= 24) break;
+                if (bone.Transform == null) { i++; continue; }  // 防止 Transform 未初始化
+                var p = bone.Transform.position;
+                message.leftHand.jointPos[i * 3]     = p.x;
+                message.leftHand.jointPos[i * 3 + 1] = p.y;
+                message.leftHand.jointPos[i * 3 + 2] = p.z;
+                i++;
+            }
+        }
+        else { message.leftHand.jointPos = new float[0]; }  // JsonUtility 不序列化 null，用空数组代替
 
         if (LRinverse)
         {

@@ -15,3 +15,15 @@ MemoryCaptures/
 UserSettings/
 
 *_DoNotShip/
+
+# Python
+__pycache__/
+*.pyc
+
+# 根目录 Unity 脚本副本（正本在 Assets/Scripts/）
+/VRController.cs
+
+# 团结引擎自动生成
+ProjectSettings/AutoStreamingSettings.asset
+ProjectSettings/TextureManagerSettings.asset
+ProjectSettings/ThreadInfoSettings.asset
