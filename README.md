@@ -1,75 +1,307 @@
-# TactAR APP
+# Quest_Tele
 
-This is the source code for the tactile/force teleoperation APP called **TactAR** in the RSS 2025 paper "[Reactive Diffusion Policy: Slow-Fast Visual-Tactile Policy Learning for Contact-Rich Manipulation](https://reactive-diffusion-policy.github.io/)".
+基于 Meta Quest 3 的 VR 手柄 6DOF 位姿采集与遥操作系统。APP 实时采集双手手柄的位置、姿态和按键状态，通过局域网 HTTP 发送至工作站，供机器人遥操作使用。
 
-## TODO
-- [x] Add text tutorial on how to use TactAR.
-- [x] Add video tutorial on how to use TactAR.
+---
 
-# Overview
-![image](./Image/TactAR.gif)
-Overview of TactAR teleoperation system. It can provide real-time tactile / force feedback via Augmented Reality (AR). The tactile feedback is represented as the 3D deformation field, which is a universal representation applicable to multiple different tactile / force sensors. The 3D deformation field is rendered and "attached" to the robot end-effector in AR, which makes the user perceive the rich contact information in 3D space. TactAR also support real-time streaming for multiple RGB cameras and optical tactile sensors.
+## 目录
 
-# Features
-## Calibration
-![image](./Image/calibration.gif)
+1. [硬件与环境要求](#1-硬件与环境要求)
+2. [第一步：编译 APK](#第一步编译-apk)
+3. [第二步：开启开发者模式并通过 ADB 安装](#第二步开启开发者模式并通过-adb-安装)
+4. [第三步：配置与使用](#第三步配置与使用)
+5. [Python 接收数据](#python-接收数据)
+6. [数据格式说明](#数据格式说明)
 
-The user adjust the translation and rotation of the virtual coordinate system such that it can align with the pre-defined TCP position (the white sphere) and the origin of the world coordinate system.
+---
 
-## Realtime Tactile Feedback in AR
-![image](./Image/AR_feedback.gif)
+## 1. 硬件与环境要求
 
-The 3D deformation / force field of the tactile / force sensors can be rendered in real time with Augmented Reality (AR).
+### 硬件
+- Meta Quest 3（已验证）
+- 工作站（Linux / Windows / macOS 均可）
+- USB-C 数据线（编译时连接 Quest 使用）
+- 路由器（Quest 与工作站需在同一局域网）
 
-## Attachment to Robot RCP
-![image](./Image/attachment.gif)
+### 软件
+- [Unity Hub](https://unity.com/download)
+- Unity Editor **2022.3.x LTS**（安装时需勾选 Android Build Support）
+- [Android SDK & ADB](https://developer.android.com/tools/releases/platform-tools)（或使用 Unity 自带的）
+- Python 3.8+（工作站接收数据用）
 
-The 3D deformation field is attached to the robot end-effector in virtual space.
+---
 
-## Camera Streaming
-![image](./Image/camera_streaming.gif)
+## 第一步：编译 APK
 
-The system supports real-time streaming of multi-view RGB cameras and tactile cameras for more immersive teleoperation experience.
+### 1.1 安装 Unity
 
-# Example Tasks
-![image](./Image/example_tasks.gif)
+1. 下载并安装 [Unity Hub](https://unity.com/download)
 
-When collecting contact-rich task data through teleoperation, the system can provide intuitive tactile / force information.
+2. 在 Unity Hub 中安装 **Unity 2022.3.x LTS**，安装时必须勾选以下模块：
+   - **Android Build Support**
+   - **Android SDK & NDK Tools**
+   - **OpenJDK**
 
-# Requirements
-## Hardware
-- [Meta Quest3 128GB](https://www.meta.com/quest/quest-3/) VR headset.
-- Please see the [RDP repository](https://github.com/xiaoxiaoxh/reactive_diffusion_policy) for other hardware and software requirements for the whole teleoperation system.
+   ![android build support](./Image/android.png)
 
-## Network
--  Make sure that the Quest 3, the workstation and the robots are in the same local area network (LAN).  
-- (Optional) For Chinese users, please use custom proxy to activate Quest 3. We recommend configuring a proxy plugin directly within the Wi-Fi-enabled router, specifically to route traffic for the Quest 3 through the proxy. After activating Quest 3, you can disable the proxy and only use the local network for teleoperation.
+### 1.2 打开项目
 
-# Installation
-## [Option 1] Install the pre-built APK 
-If there is no need to modify the code or if you simply want to test the functionality of the APP, you can directly use our released version.
+1. 克隆本仓库：
+   ```bash
+   git clone git@github.com:Greyman-Seu/Quest_Tele.git
+   ```
 
-1. Download the APK from the Github [release pages](https://github.com/xiaoxiaoxh/TactAR_APP/releases).
+2. 打开 Unity Hub，点击 **Add**，选择克隆下来的项目文件夹，等待项目加载完成。
 
-2. Please refer to the following official documentation to download Meta Quest Developer Hub and install the APK into Meta Quest3.
+   ![add project](./Image/add_project.png)
 
-    - https://developers.meta.com/horizon/documentation/unity/ts-odh-getting-started
+3. 在 **Project** 窗口中找到并双击打开场景：`Assets/Scenes/Teleoperation`
 
-    - https://developers.meta.com/horizon/documentation/unity/ts-odh-deploy-build
+   ![scene](./Image/scene.png)
 
-## [Option 2] Build from source
-If you want to modify the code or the default paramaters (e.g. workstation IP and port), you need to build the Unity APK from source following the [building guidance](Docs/Build.md) and install it into Quest 3.
+### 1.3 修改默认参数（可选）
 
-# Text Tutorial
-Please refer to the [user guide](Docs/User_Guide.md) for detailed guidance on how to use TactAR for teleoperation.
+在 **Hierarchy** 窗口中点击 `Main` 对象，在右侧 **Inspector** 中找到 `VRController` 组件：
 
-# Video Tutorial
-Please refer to the [video tutorial](https://youtube.com/playlist?list=PLwrbMgBYHlQVNC91lPlLiaZPV95Ozu_jW&feature=shared) for a step-by-step guide on how to use TactAR.
+![main object](./Image/main.png)
+![script settings](./Image/script.png)
 
+可修改的参数：
 
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `IP` | 工作站的局域网 IP | `192.168.2.187` |
+| `Port` | 工作站监听端口 | `8082` |
+| `Hz` | 数据发送频率 | `60` |
 
+> 提示：IP 也可以在 APP 运行时通过界面修改，不一定需要在这里改。
 
+### 1.4 构建 APK
 
+1. 点击菜单栏 `File` → `Build Settings`
 
+2. 按下图配置：
+   - Platform 选择 **Android**
+   - 点击 **Switch Platform**
+   - Texture Compression 选择 **ASTC**
 
+   ![build settings](./Image/build.png)
 
+3. 用 USB-C 线将 Quest 3 连接到电脑（需要先完成第二步的开发者模式设置）
+
+4. 在 `Run Device` 下拉框中选择你的 Quest 3 设备
+
+5. 点击 **Build And Run**，等待编译完成后 APK 会自动安装并启动
+
+> 若只需要 APK 文件（后续手动安装），点击 **Build** 即可生成 `.apk` 文件。
+
+---
+
+## 第二步：开启开发者模式并通过 ADB 安装
+
+Quest 3 默认不允许安装第三方 APK，需要先开启开发者模式。
+
+### 2.1 注册 Meta 开发者账号
+
+1. 访问 [Meta 开发者平台](https://developers.meta.com/) 并登录
+2. 点击右上角头像 → **My Apps** → **Create New App**，随便填写应用名称，创建完成即可（目的是激活开发者身份）
+
+### 2.2 在 Quest 3 上开启开发者模式
+
+**方法一：通过手机 Meta Horizon APP（推荐）**
+
+1. 手机安装 **Meta Horizon** APP，用同一个账号登录
+2. 打开 APP → 设备 → 选择你的 Quest 3
+3. 进入 **开发者模式**，将其**打开**
+4. 重启 Quest 3
+
+**方法二：通过 Quest 设置**
+
+1. 戴上 Quest，进入 **设置** → **系统** → **开发者**
+2. 打开 **USB 调试**
+
+### 2.3 安装 ADB
+
+**Linux / macOS：**
+```bash
+# Ubuntu / Debian
+sudo apt install android-tools-adb
+
+# macOS (Homebrew)
+brew install android-platform-tools
+```
+
+**Windows：**
+
+下载 [Android Platform Tools](https://developer.android.com/tools/releases/platform-tools)，解压后将路径加入系统 PATH。
+
+### 2.4 通过 ADB 安装 APK
+
+1. 用 USB-C 线将 Quest 3 连接到电脑
+
+2. 戴上头显，会弹出「**允许 USB 调试**」对话框，选择**始终允许**
+
+3. 验证连接：
+   ```bash
+   adb devices
+   ```
+   输出类似：
+   ```
+   List of devices attached
+   1WMHXXXXXXXXX    device
+   ```
+
+4. 安装 APK：
+   ```bash
+   adb install path/to/Quest_Tele.apk
+   ```
+
+5. 安装成功后，在 Quest 的应用列表中找到该 APP（分类选择**未知来源**）
+
+### 2.5 常用 ADB 命令
+
+```bash
+# 查看已连接设备
+adb devices
+
+# 安装 APK
+adb install app.apk
+
+# 覆盖安装（更新版本时使用）
+adb install -r app.apk
+
+# 卸载
+adb uninstall com.yourcompany.appname
+
+# 查看 Quest 上的日志（调试用）
+adb logcat -s Unity
+```
+
+---
+
+## 第三步：配置与使用
+
+### 3.1 网络配置
+
+确保 Quest 3 与工作站连接到**同一个局域网**（同一路由器）。
+
+查看工作站 IP：
+```bash
+# Linux
+ip addr show | grep "inet "
+
+# macOS
+ifconfig | grep "inet "
+
+# Windows
+ipconfig
+```
+
+### 3.2 启动工作站接收程序
+
+在工作站上运行 Python 接收服务器（监听端口 `8082`）：
+
+```bash
+cd Quest_Tele
+python3 quest_receiver.py
+```
+
+### 3.3 启动 APP 并配置 IP
+
+1. 在 Quest 应用列表（**未知来源**分类）中找到并启动 APP
+
+2. 查看地面，设置并确认地面边界
+
+3. 在 APP 界面中：
+   - **第一行输入框**：输入工作站的局域网 IP（如 `192.3.8.171`）
+   - 点击 **Refresh IP** 确认
+   - **第二行**会显示当前生效的 IP
+
+   > 端口默认为 `8082`，无需修改。
+
+### 3.4 坐标系校准
+
+首次使用时需要校准虚拟坐标系与机器人真实坐标系的对齐关系：
+
+1. 同时按下**左手柄 X 键**和**右手柄 A 键**，屏幕中出现坐标轴
+2. 按住**右手柄食指扳机**，转动手腕调整坐标系**旋转**
+3. 按住**左手柄食指扳机**，移动手柄调整坐标系**原点位置**
+4. 确保蓝色轴（Z 轴）带球的一端朝向后方
+5. 再次同时按 **X + A** 退出校准模式
+
+### 3.5 手柄按键说明
+
+| 按键 | 左手 | 右手 |
+|------|------|------|
+| `buttonState[0]` | Y | B |
+| `buttonState[1]` | X | A |
+| `buttonState[2]` | 左摇杆按下 | 右摇杆按下 |
+| `buttonState[3]` | 食指扳机（数字） | 食指扳机（数字） |
+| `buttonState[4]` | 侧边 Grip 扳机 | 侧边 Grip 扳机 |
+| `triggerState` | 食指扳机（模拟 0~1） | 食指扳机（模拟 0~1） |
+
+### 3.6 退出 APP
+
+长按右手柄 **Meta 键**退出。
+
+---
+
+## Python 接收数据
+
+### 快速开始
+
+```bash
+python3 quest_receiver.py
+```
+
+### 在自己的程序中集成
+
+```python
+from quest_receiver import start_server, get_latest
+
+# 启动接收服务器（后台线程，非阻塞）
+start_server(port=8082)
+
+while True:
+    data = get_latest()
+    if data:
+        # 右手位姿
+        r_pos  = data['rightHand']['wristPos']    # [x, y, z]，单位：米
+        r_quat = data['rightHand']['wristQuat']   # [w, x, y, z]
+        r_trig = data['rightHand']['triggerState'] # 食指扳机 [0, 1]
+        r_grip = data['rightHand']['buttonState'][4]  # Grip 是否按下 bool
+
+        # 左手位姿
+        l_pos  = data['leftHand']['wristPos']
+        l_quat = data['leftHand']['wristQuat']
+        l_trig = data['leftHand']['triggerState']
+        l_grip = data['leftHand']['buttonState'][4]
+```
+
+---
+
+## 数据格式说明
+
+APP 以 HTTP POST 方式将 JSON 数据发送至 `http://{工作站IP}:{端口}/unity`，频率 60Hz。
+
+```json
+{
+  "timestamp": 123.45,
+  "rightHand": {
+    "wristPos":    [x, y, z],
+    "wristQuat":   [w, x, y, z],
+    "triggerState": 0.0,
+    "buttonState": [false, false, false, false, false]
+  },
+  "leftHand": {
+    "wristPos":    [x, y, z],
+    "wristQuat":   [w, x, y, z],
+    "triggerState": 0.0,
+    "buttonState": [false, false, false, false, false]
+  },
+  "headPos":  [x, y, z],
+  "headQuat": [w, x, y, z]
+}
+```
+
+> 坐标系：Unity 世界坐标系，经用户校准变换后输出。四元数格式为 `[w, x, y, z]`。
