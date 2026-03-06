@@ -82,6 +82,11 @@ class QuestReceiver:
         with self._lock:
             return self._client_ip
 
+    def stop(self):
+        """关闭 HTTP 服务器"""
+        if self._server:
+            self._server.shutdown()
+
 
 # ── 模块级函数（向后兼容）───────────────────────────────────────────
 _default_receiver = None

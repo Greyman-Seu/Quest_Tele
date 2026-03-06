@@ -11,6 +11,7 @@ public class HandMessage
     public float[] wristQuat;
     public float triggerState;
     public bool[] buttonState;
+    public float[] thumbstick;    // 摇杆 XY 模拟量，范围 [-1, 1]
     public bool isHandTracking;   // true=人手追踪, false=手柄追踪
     public float[] jointPos;      // 24关节×3坐标=72个float，人手模式有效，手柄模式为空
     public HandMessage()
@@ -18,6 +19,7 @@ public class HandMessage
         wristPos = new float[3];//position of the hand
         wristQuat = new float[4];//quaternion of the hand
         buttonState = new bool[5];//buttonState of B(Y)/A(X)/Thumbstick/IndexTrigger/HandTrigger
+        thumbstick = new float[2];//thumbstick XY [-1,1]
         isHandTracking = false;
         jointPos = null;
     }
@@ -209,6 +211,13 @@ public class VRController : MonoBehaviour
         message.leftHand.triggerState = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger);
         message.rightHand.triggerState = OVRInput.Get(OVRInput.Axis1D.SecondaryIndexTrigger);
 
+        var lStick = OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick);
+        message.leftHand.thumbstick[0] = lStick.x;
+        message.leftHand.thumbstick[1] = lStick.y;
+        var rStick = OVRInput.Get(OVRInput.Axis2D.SecondaryThumbstick);
+        message.rightHand.thumbstick[0] = rStick.x;
+        message.rightHand.thumbstick[1] = rStick.y;
+
         message.leftHand.buttonState[0] = OVRInput.Get(OVRInput.RawButton.Y);
         message.leftHand.buttonState[1] = OVRInput.Get(OVRInput.RawButton.X);
         message.leftHand.buttonState[2] = OVRInput.Get(OVRInput.RawButton.LThumbstick);
@@ -221,9 +230,10 @@ public class VRController : MonoBehaviour
         message.rightHand.buttonState[3] = OVRInput.Get(OVRInput.RawButton.RIndexTrigger);
         message.rightHand.buttonState[4] = OVRInput.Get(OVRInput.RawButton.RHandTrigger);
 
-        // 追踪模式检测 + 关节数据采集
-        bool rightIsHand = skeleton_right != null && skeleton_right.IsDataValid;
-        bool leftIsHand  = skeleton_left  != null && skeleton_left.IsDataValid;
+        // 追踪模式检测：用 OVRInput 活跃控制器判断，比 IsDataValid 更可靠
+        var activeCtrl = OVRInput.GetActiveController();
+        bool leftIsHand  = (activeCtrl & OVRInput.Controller.LHand) != 0;
+        bool rightIsHand = (activeCtrl & OVRInput.Controller.RHand) != 0;
         message.rightHand.isHandTracking = rightIsHand;
         message.leftHand.isHandTracking  = leftIsHand;
 

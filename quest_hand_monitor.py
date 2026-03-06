@@ -7,6 +7,10 @@ Quest 人手骨架实时监控窗口
 - 启动：python3 quest_hand_monitor.py
 """
 
+import collections
+import signal
+import sys
+import time
 import tkinter as tk
 
 import matplotlib
@@ -21,8 +25,9 @@ from quest_receiver import QuestReceiver
 # ─── 常量 ────────────────────────────────────────────────────────────────────
 PORT       = 8082
 REFRESH_MS = 33
-PLOT_EVERY = 2      # 3D 每 2 帧渲染一次 ~15Hz
+PLOT_EVERY = 4      # 3D 每 4 帧渲染一次 ~7Hz，减轻 CPU 负担
 HAND_RANGE = 0.22   # 手掌显示半径（m），覆盖腕到指尖约20cm
+XYZ_LEN    = 100    # 腕轨迹保留帧数
 
 # ─── OVRSkeleton 关节索引（BoneId 顺序）────────────────────────────────────
 # 0  WristRoot    1  ForearmStub
@@ -93,7 +98,7 @@ def _style_ax(ax, title=''):
 
 def parse_joints(joint_list):
     """joint_list: 72个float → (24, 3) ndarray"""
-    if joint_list is None or len(joint_list) < 72:
+    if not joint_list or len(joint_list) < 72:
         return None
     return np.array(joint_list, dtype=float).reshape(24, 3)
 
@@ -125,11 +130,11 @@ class HandSkeletonPanel:
         """joints: (24,3) ndarray 或 None（手柄模式）"""
         ax = self.ax
         ax.cla()
-        _style_ax(ax, f'{self.side}手')
+        _style_ax(ax, f'{self.side} Hand')
 
         if joints is None:
             # 手柄模式：只显示文字占位
-            ax.text2D(0.5, 0.5, '[CTL] 手柄模式\n无关节数据',
+            ax.text2D(0.5, 0.5, '[CTL] Controller\nNo Joint Data',
                       transform=ax.transAxes, ha='center', va='center',
                       color='#666', fontsize=10)
             ax.set_xlim(-0.1, 0.1)
@@ -186,6 +191,60 @@ class HandSkeletonPanel:
         self._lbl['z'].config(text=f'{origin[2]:+.3f}')
 
 
+# ─── 手腕 3D 轨迹面板（嵌入主图）─────────────────────────────────────────────
+class WristTrajPanel:
+    """手腕空间轨迹，绑定到主 Figure 的一个 3D 子图"""
+
+    def __init__(self, ax, info_frame, side):
+        self.ax   = ax
+        self.side = side
+        self._traj = collections.deque(maxlen=XYZ_LEN)
+
+        # 坐标数值标签
+        f = tk.Frame(info_frame, bg=COLOR_BG)
+        f.pack(fill=tk.X, padx=6, pady=(0, 2))
+        tk.Label(f, text='腕轨迹(m)', bg=COLOR_BG, fg='#888',
+                 font=('Consolas', 9), width=10, anchor='w').pack(side=tk.LEFT)
+        self._lbl = {}
+        for k, color in [('x', '#f44336'), ('y', '#4CAF50'), ('z', '#2196F3')]:
+            tk.Label(f, text=k, bg=COLOR_BG, fg=color,
+                     font=('Consolas', 9, 'bold')).pack(side=tk.LEFT)
+            lb = tk.Label(f, text='---', bg=COLOR_BG, fg=COLOR_FG,
+                          font=('Consolas', 10), width=7, anchor='e')
+            lb.pack(side=tk.LEFT, padx=(0, 4))
+            self._lbl[k] = lb
+
+    def update(self, pos):
+        self._traj.append(np.array(pos, dtype=float))
+        self._lbl['x'].config(text=f'{pos[0]:+.3f}')
+        self._lbl['y'].config(text=f'{pos[1]:+.3f}')
+        self._lbl['z'].config(text=f'{pos[2]:+.3f}')
+
+        ax = self.ax
+        ax.cla()
+        _style_ax(ax, f'{self.side} Wrist Traj')
+
+        if len(self._traj) < 2:
+            return
+
+        traj = np.array(self._traj)
+        cur  = traj[-1]
+        R = 0.3
+        ax.set_xlim(cur[0]-R, cur[0]+R)
+        ax.set_ylim(cur[1]-R, cur[1]+R)
+        ax.set_zlim(cur[2]-R, cur[2]+R)
+
+        # 单次 plot，旧段半透明，新段不透明
+        n = len(traj)
+        mid = n // 2
+        if mid > 1:
+            ax.plot(traj[:mid, 0], traj[:mid, 1], traj[:mid, 2],
+                    color='#3a6ea5', linewidth=1.0, alpha=0.4)
+        ax.plot(traj[mid:, 0], traj[mid:, 1], traj[mid:, 2],
+                color='#64b5f6', linewidth=1.6, alpha=0.9)
+        ax.scatter([cur[0]], [cur[1]], [cur[2]], color='white', s=50, zorder=6)
+
+
 # ─── 主窗口 ───────────────────────────────────────────────────────────────────
 class QuestHandMonitor:
     def __init__(self, root):
@@ -209,13 +268,17 @@ class QuestHandMonitor:
             font=('Consolas', 11), anchor='w', padx=10)
         self._status_lbl.pack(fill=tk.X)
 
-        # matplotlib 图（左右手各一个 3D 子图）
-        self.fig = plt.Figure(figsize=(9, 5), facecolor='#1a1a2e')
+        # matplotlib 图：2行×2列
+        # 行0: 左骨架 | 右骨架
+        # 行1: 左腕轨迹 | 右腕轨迹
+        self.fig = plt.Figure(figsize=(10, 7), facecolor='#1a1a2e')
         self.fig.subplots_adjust(left=0.02, right=0.98,
-                                  top=0.95, bottom=0.02,
-                                  wspace=0.05)
-        self.ax_l = self.fig.add_subplot(1, 2, 1, projection='3d')
-        self.ax_r = self.fig.add_subplot(1, 2, 2, projection='3d')
+                                  top=0.96, bottom=0.02,
+                                  wspace=0.05, hspace=0.15)
+        self.ax_l  = self.fig.add_subplot(2, 2, 1, projection='3d')
+        self.ax_r  = self.fig.add_subplot(2, 2, 2, projection='3d')
+        self.ax_lt = self.fig.add_subplot(2, 2, 3, projection='3d')
+        self.ax_rt = self.fig.add_subplot(2, 2, 4, projection='3d')
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=4)
@@ -233,8 +296,10 @@ class QuestHandMonitor:
             tk.Label(f, text=t, bg=COLOR_BG, fg=COLOR_ACC,
                      font=('Consolas', 10, 'bold')).pack(anchor='w')
 
-        self.panel_l = HandSkeletonPanel(self.ax_l, lf, '左')
-        self.panel_r = HandSkeletonPanel(self.ax_r, rf, '右')
+        self.panel_l  = HandSkeletonPanel(self.ax_l,  lf, 'L')
+        self.panel_r  = HandSkeletonPanel(self.ax_r,  rf, 'R')
+        self.traj_l   = WristTrajPanel(self.ax_lt, lf, 'L')
+        self.traj_r   = WristTrajPanel(self.ax_rt, rf, 'R')
 
     def _schedule_update(self):
         self._update()
@@ -262,6 +327,19 @@ class QuestHandMonitor:
         lh = data.get('rightHand', {})
         rh = data.get('leftHand',  {})
 
+        # 用 jointPos 长度判断是否真正处于人手模式（null 时 or [] 兜底）
+        l_is_hand = len(lh.get('jointPos') or []) == 72
+        r_is_hand = len(rh.get('jointPos') or []) == 72
+
+        # 手柄模式下不更新人手监控
+        if not l_is_hand and not r_is_hand:
+            self._frame += 1
+            if self._frame % PLOT_EVERY == 0:
+                self.panel_l.update(None)
+                self.panel_r.update(None)
+                self.canvas.draw_idle()
+            return
+
         l_joints = parse_joints(lh.get('jointPos'))
         r_joints = parse_joints(rh.get('jointPos'))
 
@@ -270,6 +348,14 @@ class QuestHandMonitor:
         if self._frame % PLOT_EVERY == 0:
             self.panel_l.update(l_joints)
             self.panel_r.update(r_joints)
+
+            l_pos = lh.get('wristPos', [0.0, 0.0, 0.0])
+            r_pos = rh.get('wristPos', [0.0, 0.0, 0.0])
+            if l_joints is not None:
+                self.traj_l.update(l_pos)
+            if r_joints is not None:
+                self.traj_r.update(r_pos)
+
             self.canvas.draw_idle()
 
 
@@ -277,4 +363,15 @@ class QuestHandMonitor:
 if __name__ == '__main__':
     root = tk.Tk()
     app = QuestHandMonitor(root)
+
+    def _quit(*_):
+        app.receiver.stop()
+        root.destroy()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, _quit)
+    root.protocol('WM_DELETE_WINDOW', _quit)
+    # 让 Ctrl+C 能打断 mainloop
+    root.after(200, lambda: root.after(200, lambda: None))
+
     root.mainloop()

@@ -1,17 +1,17 @@
 # Quest_Tele
 
-基于 Meta Quest 3 的 VR 手柄 6DOF 位姿采集与遥操作系统。APP 实时采集双手手柄的位置、姿态和按键状态，通过局域网 HTTP 发送至工作站，供机器人遥操作使用。
+基于 Meta Quest 3 的 VR 双手位姿采集系统，支持**手柄模式**和**人手追踪模式**，通过局域网 HTTP 实时发送至工作站，用于机器人遥操作。
 
 ---
 
 ## 目录
 
 1. [硬件与环境要求](#1-硬件与环境要求)
-2. [第一步：编译 APK](#第一步编译-apk)
-3. [第二步：开启开发者模式并通过 ADB 安装](#第二步开启开发者模式并通过-adb-安装)
-4. [第三步：配置与使用](#第三步配置与使用)
-5. [Python 接收数据](#python-接收数据)
-6. [数据格式说明](#数据格式说明)
+2. [编译与安装 APK](#2-编译与安装-apk)
+3. [配置与使用](#3-配置与使用)
+4. [Python 实时监控](#4-python-实时监控)
+5. [Python 数据接收与集成](#5-python-数据接收与集成)
+6. [数据格式说明](#6-数据格式说明)
 
 ---
 
@@ -19,289 +19,301 @@
 
 ### 硬件
 - Meta Quest 3（已验证）
-- 工作站（Linux / Windows / macOS 均可）
-- USB-C 数据线（编译时连接 Quest 使用）
+- 工作站（Linux / Windows / macOS）
+- USB-C 数据线
 - 路由器（Quest 与工作站需在同一局域网）
 
 ### 软件
 - [Unity Hub](https://unity.com/download)
-- Unity Editor **2022.3.x LTS**（安装时需勾选 Android Build Support）
-- [Android SDK & ADB](https://developer.android.com/tools/releases/platform-tools)（或使用 Unity 自带的）
-- Python 3.8+（工作站接收数据用）
+- Unity Editor **2022.3.x LTS**（需勾选 Android Build Support）
+- Python 3.8+（工作站端）
+- `pip install matplotlib numpy`
 
 ---
 
-## 第一步：编译 APK
+## 2. 编译与安装 APK
 
-### 1.1 安装 Unity
+### 2.1 安装 Unity
 
-1. 下载并安装 [Unity Hub](https://unity.com/download)
+在 Unity Hub 中安装 **Unity 2022.3.x LTS**，必须勾选：
+- Android Build Support
+- Android SDK & NDK Tools
+- OpenJDK
 
-2. 在 Unity Hub 中安装 **Unity 2022.3.x LTS**，安装时必须勾选以下模块：
-   - **Android Build Support**
-   - **Android SDK & NDK Tools**
-   - **OpenJDK**
+### 2.2 打开项目
 
-   ![android build support](./Image/android.png)
+```bash
+git clone git@github.com:Greyman-Seu/Quest_Tele.git
+```
 
-### 1.2 打开项目
+在 Unity Hub 中 **Add** 项目，打开场景 `Assets/Scenes/Teleoperation`。
 
-1. 克隆本仓库：
-   ```bash
-   git clone git@github.com:Greyman-Seu/Quest_Tele.git
-   ```
+### 2.3 修改默认参数（可选）
 
-2. 打开 Unity Hub，点击 **Add**，选择克隆下来的项目文件夹，等待项目加载完成。
-
-   ![add project](./Image/add_project.png)
-
-3. 在 **Project** 窗口中找到并双击打开场景：`Assets/Scenes/Teleoperation`
-
-   ![scene](./Image/scene.png)
-
-### 1.3 修改默认参数（可选）
-
-在 **Hierarchy** 窗口中点击 `Main` 对象，在右侧 **Inspector** 中找到 `VRController` 组件：
-
-![main object](./Image/main.png)
-![script settings](./Image/script.png)
-
-可修改的参数：
+在 Hierarchy 中选择 `Main` 对象，Inspector 中找到 `VRController` 组件：
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| `IP` | 工作站的局域网 IP | `192.168.2.187` |
-| `Port` | 工作站监听端口 | `8082` |
-| `Hz` | 数据发送频率 | `60` |
+| `IP` | 工作站局域网 IP | `192.168.2.187` |
+| `Port` | 监听端口 | `8082` |
+| `Hz` | 发送频率 | `60` |
 
-> 提示：IP 也可以在 APP 运行时通过界面修改，不一定需要在这里改。
+> IP 也可在 APP 运行时通过界面修改。
 
-### 1.4 构建 APK
+### 2.4 构建 APK
 
-1. 点击菜单栏 `File` → `Build Settings`
+1. `File` → `Build Settings` → Platform 选 **Android** → `Switch Platform`
+2. Texture Compression 选 **ASTC**
+3. 点击 **Build** 生成 `.apk` 文件
 
-2. 按下图配置：
-   - Platform 选择 **Android**
-   - 点击 **Switch Platform**
-   - Texture Compression 选择 **ASTC**
+### 2.5 开启开发者模式
 
-   ![build settings](./Image/build.png)
+1. 手机安装 **Meta Horizon** APP，登录同一账号
+2. 进入 设备 → Quest 3 → **开发者模式** → 开启
+3. 重启 Quest 3
 
-3. 用 USB-C 线将 Quest 3 连接到电脑（需要先完成第二步的开发者模式设置）
+### 2.6 通过 ADB 安装
 
-4. 在 `Run Device` 下拉框中选择你的 Quest 3 设备
-
-5. 点击 **Build And Run**，等待编译完成后 APK 会自动安装并启动
-
-> 若只需要 APK 文件（后续手动安装），点击 **Build** 即可生成 `.apk` 文件。
-
----
-
-## 第二步：开启开发者模式并通过 ADB 安装
-
-Quest 3 默认不允许安装第三方 APK，需要先开启开发者模式。
-
-### 2.1 注册 Meta 开发者账号
-
-1. 访问 [Meta 开发者平台](https://developers.meta.com/) 并登录
-2. 点击右上角头像 → **My Apps** → **Create New App**，随便填写应用名称，创建完成即可（目的是激活开发者身份）
-
-### 2.2 在 Quest 3 上开启开发者模式
-
-**方法一：通过手机 Meta Horizon APP（推荐）**
-
-1. 手机安装 **Meta Horizon** APP，用同一个账号登录
-2. 打开 APP → 设备 → 选择你的 Quest 3
-3. 进入 **开发者模式**，将其**打开**
-4. 重启 Quest 3
-
-**方法二：通过 Quest 设置**
-
-1. 戴上 Quest，进入 **设置** → **系统** → **开发者**
-2. 打开 **USB 调试**
-
-### 2.3 安装 ADB
-
-**Linux / macOS：**
+**Linux 安装 ADB：**
 ```bash
-# Ubuntu / Debian
 sudo apt install android-tools-adb
-
-# macOS (Homebrew)
-brew install android-platform-tools
 ```
 
-**Windows：**
-
-下载 [Android Platform Tools](https://developer.android.com/tools/releases/platform-tools)，解压后将路径加入系统 PATH。
-
-### 2.4 通过 ADB 安装 APK
-
-1. 用 USB-C 线将 Quest 3 连接到电脑
-
-2. 戴上头显，会弹出「**允许 USB 调试**」对话框，选择**始终允许**
-
-3. 验证连接：
-   ```bash
-   adb devices
-   ```
-   输出类似：
-   ```
-   List of devices attached
-   1WMHXXXXXXXXX    device
-   ```
-
-4. 安装 APK：
-   ```bash
-   adb install path/to/Quest_Tele.apk
-   ```
-
-5. 安装成功后，在 Quest 的应用列表中找到该 APP（分类选择**未知来源**）
-
-### 2.5 常用 ADB 命令
-
+**安装 APK：**
 ```bash
-# 查看已连接设备
-adb devices
-
-# 安装 APK
-adb install app.apk
-
-# 覆盖安装（更新版本时使用）
-adb install -r app.apk
-
-# 卸载
-adb uninstall com.yourcompany.appname
-
-# 查看 Quest 上的日志（调试用）
-adb logcat -s Unity
+# 连接 USB，戴上头显点击"允许 USB 调试"
+adb devices                        # 确认设备已识别
+adb install -r path/to/Quest_Tele.apk
 ```
+
+**Linux 首次使用需添加 udev 规则（Meta Quest Vendor ID = 2833）：**
+```bash
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2833", MODE="0666", GROUP="plugdev"' \
+  | sudo tee /etc/udev/rules.d/51-android.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+拔插 USB 线后重新执行 `adb devices`。
+
+安装成功后在 Quest 应用列表的**未知来源**分类中找到 APP。
 
 ---
 
-## 第三步：配置与使用
+## 3. 配置与使用
 
 ### 3.1 网络配置
 
-确保 Quest 3 与工作站连接到**同一个局域网**（同一路由器）。
-
-查看工作站 IP：
-```bash
-# Linux
-ip addr show | grep "inet "
-
-# macOS
-ifconfig | grep "inet "
-
-# Windows
-ipconfig
-```
-
-### 3.2 启动工作站接收程序
-
-在工作站上运行 Python 接收服务器（监听端口 `8082`）：
+确保 Quest 3 与工作站在**同一局域网**。查看工作站 IP：
 
 ```bash
-cd Quest_Tele
-python3 quest_receiver.py
+ip addr show | grep "inet "   # Linux
 ```
 
-### 3.3 启动 APP 并配置 IP
+### 3.2 启动 APP
 
-1. 在 Quest 应用列表（**未知来源**分类）中找到并启动 APP
+1. 在 Quest 应用列表（**未知来源**）中启动 APP
+2. 在界面中输入工作站 IP，点击 **Refresh IP** 确认
 
-2. 查看地面，设置并确认地面边界
+### 3.3 坐标系校准
 
-3. 在 APP 界面中：
-   - **第一行输入框**：输入工作站的局域网 IP（如 `192.3.8.171`）
-   - 点击 **Refresh IP** 确认
-   - **第二行**会显示当前生效的 IP
+首次使用需对齐虚拟坐标系与机器人坐标系：
 
-   > 端口默认为 `8082`，无需修改。
+1. 同时按 **左手 X + 右手 A** 键，进入校准模式（屏幕出现坐标轴）
+2. 按住**右手食指扳机** + 转动手腕 → 调整坐标系**旋转**
+3. 按住**左手食指扳机** + 移动手柄 → 调整坐标系**原点**
+4. 再次同时按 **X + A** 退出校准模式
 
-### 3.4 坐标系校准
+### 3.4 追踪模式
 
-首次使用时需要校准虚拟坐标系与机器人真实坐标系的对齐关系：
+APP 自动识别当前模式，无需手动切换：
 
-1. 同时按下**左手柄 X 键**和**右手柄 A 键**，屏幕中出现坐标轴
-2. 按住**右手柄食指扳机**，转动手腕调整坐标系**旋转**
-3. 按住**左手柄食指扳机**，移动手柄调整坐标系**原点位置**
-4. 确保蓝色轴（Z 轴）带球的一端朝向后方
-5. 再次同时按 **X + A** 退出校准模式
-
-### 3.5 手柄按键说明
-
-| 按键 | 左手 | 右手 |
-|------|------|------|
-| `buttonState[0]` | Y | B |
-| `buttonState[1]` | X | A |
-| `buttonState[2]` | 左摇杆按下 | 右摇杆按下 |
-| `buttonState[3]` | 食指扳机（数字） | 食指扳机（数字） |
-| `buttonState[4]` | 侧边 Grip 扳机 | 侧边 Grip 扳机 |
-| `triggerState` | 食指扳机（模拟 0~1） | 食指扳机（模拟 0~1） |
-
-### 3.6 退出 APP
-
-长按右手柄 **Meta 键**退出。
+| 模式 | 触发条件 | 可用数据 |
+|------|----------|----------|
+| **手柄模式** | 持握 Touch 控制器 | 位姿、按键、扳机、摇杆 |
+| **人手追踪模式** | 放下控制器，伸出双手 | 位姿、24 关节坐标 |
 
 ---
 
-## Python 接收数据
+## 4. Python 实时监控
 
-### 快速开始
+提供两个独立监控窗口，根据模式分别使用：
+
+### 4.1 手柄监控
+
+```bash
+python3 quest_monitor.py
+```
+
+![手柄监控](./Image/monitor.png)
+
+**功能：**
+- 左右手腕 3D 运动轨迹
+- 手柄朝向姿态（飞机示意图）
+- 实时数值：位置 / 欧拉角 / 四元数 / 摇杆 XY / 食指扳机
+- 摇杆实时可视化（小圆点）
+- 按键状态指示灯（Y/X/B/A / 摇杆按下 / 扳机 / Grip）
+- 人手模式下自动冻结，显示 `[HND]` 提示
+
+### 4.2 人手骨架监控
+
+```bash
+python3 quest_hand_monitor.py
+```
+
+![人手监控](./Image/hand_monitor.png)
+
+**功能：**
+- 左右手 24 关节 3D 骨架（彩色按指归属）
+- 左右手腕空间轨迹（3D，渐变蓝色）
+- 腕部实时 XYZ 坐标
+- 手柄模式下自动冻结，显示 `[CTL]` 提示
+
+### 4.3 退出监控
+
+关闭窗口或按 `Ctrl+C` 均可正常退出。
+
+---
+
+## 5. Python 数据接收与集成
+
+### 快速测试
 
 ```bash
 python3 quest_receiver.py
 ```
+
+终端会实时打印接收到的位姿数据。
 
 ### 在自己的程序中集成
 
 ```python
-from quest_receiver import start_server, get_latest
+from quest_receiver import QuestReceiver
 
-# 启动接收服务器（后台线程，非阻塞）
-start_server(port=8082)
+receiver = QuestReceiver(port=8082)
+receiver.start()
 
 while True:
-    data = get_latest()
-    if data:
-        # 右手位姿
-        r_pos  = data['rightHand']['wristPos']    # [x, y, z]，单位：米
-        r_quat = data['rightHand']['wristQuat']   # [w, x, y, z]
-        r_trig = data['rightHand']['triggerState'] # 食指扳机 [0, 1]
-        r_grip = data['rightHand']['buttonState'][4]  # Grip 是否按下 bool
+    data = receiver.get_latest()
+    if data is None:
+        continue
 
-        # 左手位姿
-        l_pos  = data['leftHand']['wristPos']
-        l_quat = data['leftHand']['wristQuat']
-        l_trig = data['leftHand']['triggerState']
-        l_grip = data['leftHand']['buttonState'][4]
+    mode = data['rightHand']['isHandTracking']  # True=人手, False=手柄
+
+    if not mode:
+        # ── 手柄模式 ──────────────────────────────────
+        r_pos    = data['rightHand']['wristPos']       # [x, y, z] 米
+        r_quat   = data['rightHand']['wristQuat']      # [w, x, y, z]
+        r_trig   = data['rightHand']['triggerState']   # float [0, 1]
+        r_stick  = data['rightHand']['thumbstick']     # [x, y]  [-1, 1]
+        r_btns   = data['rightHand']['buttonState']    # list[bool] × 5
+
+        l_pos    = data['leftHand']['wristPos']
+        l_quat   = data['leftHand']['wristQuat']
+        l_trig   = data['leftHand']['triggerState']
+        l_stick  = data['leftHand']['thumbstick']
+        l_btns   = data['leftHand']['buttonState']
+
+    else:
+        # ── 人手追踪模式 ───────────────────────────────
+        r_pos    = data['rightHand']['wristPos']       # [x, y, z] 米
+        r_quat   = data['rightHand']['wristQuat']      # [w, x, y, z]
+        r_joints = data['rightHand']['jointPos']       # list[float] × 72
+        # jointPos 展开为 (24, 3)：
+        # import numpy as np
+        # joints = np.array(r_joints).reshape(24, 3)
+
+        l_pos    = data['leftHand']['wristPos']
+        l_quat   = data['leftHand']['wristQuat']
+        l_joints = data['leftHand']['jointPos']
+
+    # 头显位姿（始终有效）
+    head_pos  = data['headPos']    # [x, y, z]
+    head_quat = data['headQuat']   # [w, x, y, z]
+    ts        = data['timestamp']  # float，APP 运行时间（秒）
 ```
 
 ---
 
-## 数据格式说明
+## 6. 数据格式说明
 
-APP 以 HTTP POST 方式将 JSON 数据发送至 `http://{工作站IP}:{端口}/unity`，频率 60Hz。
+APP 以 **HTTP POST / JSON** 方式发送至 `http://{IP}:{Port}/unity`，默认 60 Hz。
+
+### 顶层结构
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `timestamp` | `float` | APP 运行时间，单位秒 |
+| `rightHand` | `HandMessage` | 右手数据 |
+| `leftHand` | `HandMessage` | 左手数据 |
+| `headPos` | `[x, y, z]` | 头显位置，单位米 |
+| `headQuat` | `[w, x, y, z]` | 头显朝向四元数 |
+
+### HandMessage 字段
+
+| 字段 | 类型 | 有效模式 | 说明 |
+|------|------|----------|------|
+| `wristPos` | `float[3]` | 两种模式 | 手腕世界坐标 `[x, y, z]`，单位米 |
+| `wristQuat` | `float[4]` | 两种模式 | 手腕朝向四元数 `[w, x, y, z]` |
+| `isHandTracking` | `bool` | 两种模式 | `true`=人手追踪，`false`=手柄 |
+| `triggerState` | `float` | 手柄模式 | 食指扳机模拟量，范围 `[0, 1]` |
+| `thumbstick` | `float[2]` | 手柄模式 | 摇杆 XY 模拟量，范围 `[-1, 1]` |
+| `buttonState` | `bool[5]` | 手柄模式 | 见下表 |
+| `jointPos` | `float[72]` | 人手模式 | 24 关节世界坐标，展开为 `(24, 3)` |
+
+### buttonState 索引
+
+| 索引 | 左手 | 右手 |
+|------|------|------|
+| `[0]` | Y | B |
+| `[1]` | X | A |
+| `[2]` | 左摇杆按下 | 右摇杆按下 |
+| `[3]` | 食指扳机（数字） | 食指扳机（数字） |
+| `[4]` | Grip 侧边扳机 | Grip 侧边扳机 |
+
+### jointPos 关节索引（OVRSkeleton BoneId）
+
+| 索引 | 关节 | 索引 | 关节 |
+|------|------|------|------|
+| 0 | WristRoot | 12 | Ring1 |
+| 1 | ForearmStub | 13 | Ring2 |
+| 2 | Thumb0 | 14 | Ring3 |
+| 3 | Thumb1 | 15 | Pinky0 |
+| 4 | Thumb2 | 16 | Pinky1 |
+| 5 | Thumb3 | 17 | Pinky2 |
+| 6 | Index1 | 18 | Pinky3 |
+| 7 | Index2 | 19 | ThumbTip |
+| 8 | Index3 | 20 | IndexTip |
+| 9 | Middle1 | 21 | MiddleTip |
+| 10 | Middle2 | 22 | RingTip |
+| 11 | Middle3 | 23 | PinkyTip |
+
+> 坐标系：Unity 世界坐标系，经校准变换后输出。四元数格式统一为 `[w, x, y, z]`。
+
+### 完整 JSON 示例
 
 ```json
 {
-  "timestamp": 123.45,
+  "timestamp": 42.35,
   "rightHand": {
-    "wristPos":    [x, y, z],
-    "wristQuat":   [w, x, y, z],
-    "triggerState": 0.0,
-    "buttonState": [false, false, false, false, false]
+    "wristPos":      [0.30, 1.10, -0.20],
+    "wristQuat":     [0.98, 0.01, 0.17, 0.00],
+    "isHandTracking": false,
+    "triggerState":  0.85,
+    "thumbstick":    [0.12, -0.45],
+    "buttonState":   [false, true, false, false, true],
+    "jointPos":      []
   },
   "leftHand": {
-    "wristPos":    [x, y, z],
-    "wristQuat":   [w, x, y, z],
-    "triggerState": 0.0,
-    "buttonState": [false, false, false, false, false]
+    "wristPos":      [-0.25, 0.92, -0.18],
+    "wristQuat":     [0.97, 0.00, -0.22, 0.01],
+    "isHandTracking": false,
+    "triggerState":  0.00,
+    "thumbstick":    [0.00, 0.00],
+    "buttonState":   [false, false, false, false, false],
+    "jointPos":      []
   },
-  "headPos":  [x, y, z],
-  "headQuat": [w, x, y, z]
+  "headPos":  [0.00, 1.65, 0.00],
+  "headQuat": [1.00, 0.00, 0.00, 0.00]
 }
 ```
 
-> 坐标系：Unity 世界坐标系，经用户校准变换后输出。四元数格式为 `[w, x, y, z]`。
+> 人手追踪模式下，`triggerState`、`thumbstick`、`buttonState` 无效（归零），`jointPos` 填充 72 个浮点数。

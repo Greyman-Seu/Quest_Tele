@@ -8,6 +8,9 @@ Quest 手柄实时监控窗口
 
 import collections
 import math
+import signal
+import sys
+import time
 import tkinter as tk
 
 import matplotlib
@@ -24,6 +27,7 @@ PORT        = 8082
 REFRESH_MS  = 33        # ~30 Hz（数值面板刷新率）
 PLOT_EVERY  = 3         # 3D图每 N 帧渲染一次 → ~10 Hz
 TRAJ_LEN    = 100       # 轨迹历史帧数
+BTN_HOLD_S  = 0.20      # 按键松开后保持亮起的时间（秒）
 TRAJ_RANGE  = 0.5       # 轨迹图坐标轴半径（m）
 PLANE_SCALE = 0.30      # 飞机示意缩放（姿态图单位为 1）
 
@@ -131,6 +135,28 @@ class HandPanel:
         row('Pos (m)',    ['px', 'py', 'pz'])
         row('Euler (°)',  ['roll', 'pitch', 'yaw'])
         row('Quat wxyz',  ['qw', 'qx', 'qy', 'qz'])
+        row('摇杆 XY',    ['sx', 'sy'])
+
+        # ── 摇杆可视化 ────────────────────────────────────────────────────
+        sf = tk.Frame(info, bg=COLOR_BG)
+        sf.pack(fill=tk.X, pady=(4, 2))
+        tk.Label(sf, text='摇杆', bg=COLOR_BG, fg='#888',
+                 font=('Consolas', 9), width=12, anchor='w').pack(side=tk.LEFT)
+        SZ = 60  # 小窗尺寸
+        self._stick_cv = tk.Canvas(sf, width=SZ, height=SZ,
+                                   bg='#111', highlightthickness=1,
+                                   highlightbackground='#444')
+        self._stick_cv.pack(side=tk.LEFT, padx=4)
+        # 背景十字线 & 边框圆
+        half = SZ // 2
+        self._stick_cv.create_line(half, 2, half, SZ-2, fill='#333', width=1)
+        self._stick_cv.create_line(2, half, SZ-2, half, fill='#333', width=1)
+        self._stick_cv.create_oval(4, 4, SZ-4, SZ-4, outline='#333', width=1)
+        # 实时点
+        r = 5
+        self._stick_dot = self._stick_cv.create_oval(
+            half-r, half-r, half+r, half+r, fill=COLOR_ACC, outline='')
+        self._stick_sz = SZ
 
         # ── 扳机进度条 ────────────────────────────────────────────────────
         tf = tk.Frame(info, bg=COLOR_BG)
@@ -147,6 +173,7 @@ class HandPanel:
         # ── 按键指示器 ────────────────────────────────────────────────────
         bf = tk.Frame(info, bg=COLOR_BG)
         bf.pack(fill=tk.X, pady=(4, 6))
+        self._btn_last_press = [0.0] * len(btn_labels)  # 每个按键上次按下的时间戳
         self._btn_cvs = []
         for lbl in btn_labels:
             col = tk.Frame(bf, bg=COLOR_BG)
@@ -163,7 +190,7 @@ class HandPanel:
     def update_traj(self, pos):
         ax = self.ax_traj
         ax.cla()
-        _style_ax(ax, '轨迹')
+        _style_ax(ax, 'Traj')
         ax.set_xlim(-TRAJ_RANGE, TRAJ_RANGE)
         ax.set_ylim(-TRAJ_RANGE, TRAJ_RANGE)
         ax.set_zlim(-TRAJ_RANGE, TRAJ_RANGE)
@@ -181,7 +208,7 @@ class HandPanel:
     def update_orient(self, quat):
         ax = self.ax_orient
         ax.cla()
-        _style_ax(ax, '姿态')
+        _style_ax(ax, 'Orient')
         lim = PLANE_SCALE * 1.4
         ax.set_xlim(-lim, lim)
         ax.set_ylim(-lim, lim)
@@ -201,7 +228,7 @@ class HandPanel:
         draw_plane(ax, R)
 
         # 机鼻方向标注
-        ax.text(0, 0, lim * 0.95, '↑ +Z 前向', color='#00e5ff',
+        ax.text(0, 0, lim * 0.95, '+Z Fwd', color='#00e5ff',
                 fontsize=6, ha='center')
 
     # ── 追踪模式提示 ──────────────────────────────────────────────────────────
@@ -212,7 +239,7 @@ class HandPanel:
             self._mode_lbl.config(text='[HND] 人手模式  ! 无按键/扳机', fg='#FF9800', bg='#3a2a00')
 
     # ── 数值面板 ──────────────────────────────────────────────────────────────
-    def update_info(self, pos, quat, trig, btns):
+    def update_info(self, pos, quat, trig, btns, stick=None):
         px, py, pz = pos
         w, x, y, z = quat
         roll, pitch, yaw = quat_to_euler(w, x, y, z)
@@ -228,6 +255,21 @@ class HandPanel:
         self._lbl['qy'].config(text=f'{y:+.3f}')
         self._lbl['qz'].config(text=f'{z:+.3f}')
 
+        sx = stick[0] if stick and len(stick) >= 2 else 0.0
+        sy = stick[1] if stick and len(stick) >= 2 else 0.0
+        self._lbl['sx'].config(text=f'{sx:+.3f}')
+        self._lbl['sy'].config(text=f'{sy:+.3f}')
+
+        # 更新摇杆可视化点（Y 轴向上为正，canvas 向下为正，需翻转）
+        SZ = self._stick_sz
+        half = SZ // 2
+        margin = 6
+        r = 5
+        cx = half + sx * (half - margin)
+        cy = half - sy * (half - margin)
+        self._stick_cv.coords(self._stick_dot,
+                              cx-r, cy-r, cx+r, cy+r)
+
         # 扳机
         self._trig_cv.delete('fill')
         fw = int(140 * max(0.0, min(1.0, trig)))
@@ -236,9 +278,13 @@ class HandPanel:
                                            fill=COLOR_ACC, outline='', tags='fill')
         self._trig_lbl.config(text=f'{trig:.2f}')
 
-        # 按键
+        # 按键（松开后保持亮 BTN_HOLD_S 秒）
+        now = time.monotonic()
         for i, c in enumerate(self._btn_cvs):
-            on = (i < len(btns)) and bool(btns[i])
+            pressed = (i < len(btns)) and bool(btns[i])
+            if pressed:
+                self._btn_last_press[i] = now
+            on = pressed or (now - self._btn_last_press[i] < BTN_HOLD_S)
             c.itemconfig('btn', fill=COLOR_ON if on else COLOR_OFF)
 
 
@@ -278,8 +324,8 @@ class QuestMonitor:
         self.ax_lo = self.fig.add_subplot(2, 2, 3, projection='3d')  # 左姿态
         self.ax_ro = self.fig.add_subplot(2, 2, 4, projection='3d')  # 右姿态
 
-        for ax, title in [(self.ax_lt, '左手轨迹'), (self.ax_rt, '右手轨迹'),
-                          (self.ax_lo, '左手姿态'), (self.ax_ro, '右手姿态')]:
+        for ax, title in [(self.ax_lt, 'L Traj'), (self.ax_rt, 'R Traj'),
+                          (self.ax_lo, 'L Orient'), (self.ax_ro, 'R Orient')]:
             _style_ax(ax, title)
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
@@ -334,19 +380,21 @@ class QuestMonitor:
         l_quat  = safe(lh, 'wristQuat',    [1.0, 0.0, 0.0, 0.0])
         l_trig  = safe(lh, 'triggerState', 0.0)
         l_btn   = safe(lh, 'buttonState',  [False]*5)
-        l_is_hand = safe(lh, 'isHandTracking', False)
+        l_stick = safe(lh, 'thumbstick',   [0.0, 0.0])
+        l_is_hand = len(safe(lh, 'jointPos', None) or []) == 72
 
-        r_pos   = safe(rh, 'wristPos',     [0.0, 0.0, 0.0])
-        r_quat  = safe(rh, 'wristQuat',    [1.0, 0.0, 0.0, 0.0])
-        r_trig  = safe(rh, 'triggerState', 0.0)
-        r_btn   = safe(rh, 'buttonState',  [False]*5)
-        r_is_hand = safe(rh, 'isHandTracking', False)
+        r_pos     = safe(rh, 'wristPos',     [0.0, 0.0, 0.0])
+        r_quat    = safe(rh, 'wristQuat',    [1.0, 0.0, 0.0, 0.0])
+        r_trig    = safe(rh, 'triggerState', 0.0)
+        r_btn     = safe(rh, 'buttonState',  [False]*5)
+        r_stick   = safe(rh, 'thumbstick',   [0.0, 0.0])
+        r_is_hand = len(safe(rh, 'jointPos', None) or []) == 72
 
         # 数值面板：每帧更新（30Hz，纯 tkinter Label，几乎无开销）
         self.left_panel.update_mode(l_is_hand)
         self.right_panel.update_mode(r_is_hand)
-        self.left_panel.update_info(l_pos, l_quat, l_trig, l_btn)
-        self.right_panel.update_info(r_pos, r_quat, r_trig, r_btn)
+        self.left_panel.update_info(l_pos, l_quat, l_trig, l_btn, l_stick)
+        self.right_panel.update_info(r_pos, r_quat, r_trig, r_btn, r_stick)
 
         # 3D 图：降频渲染（~10Hz），避免 matplotlib 占满主线程
         self._frame += 1
@@ -362,4 +410,13 @@ class QuestMonitor:
 if __name__ == '__main__':
     root = tk.Tk()
     app = QuestMonitor(root)
+
+    def _quit(*_):
+        app.receiver.stop()
+        root.destroy()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, _quit)
+    root.protocol('WM_DELETE_WINDOW', _quit)
+
     root.mainloop()
