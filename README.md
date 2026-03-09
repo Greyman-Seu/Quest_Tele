@@ -38,9 +38,9 @@ APP 自动识别当前模式，无需手动切换：
 
 ## Python 实时监控
 
-依赖：`pip install matplotlib numpy`
-
 ### 手柄监控
+
+依赖：`pip install numpy`
 
 ```bash
 python3 quest_monitor.py
@@ -54,6 +54,8 @@ python3 quest_monitor.py
 - 人手模式下自动冻结，显示 `[HND]` 提示
 
 ### 人手骨架监控
+
+依赖：`pip install matplotlib numpy`
 
 ```bash
 python3 quest_hand_monitor.py
