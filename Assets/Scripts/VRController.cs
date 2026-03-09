@@ -93,6 +93,7 @@ public class Message
 public class VRController : MonoBehaviour
 {
     public static VRController instance;
+    private static readonly float[] _emptyJoints = new float[0];
     public string ip;
     public int port;
     HttpClient client = new HttpClient();
@@ -253,7 +254,7 @@ public class VRController : MonoBehaviour
                 i++;
             }
         }
-        else { message.rightHand.jointPos = new float[0]; }  // JsonUtility 不序列化 null，用空数组代替
+        else { message.rightHand.jointPos = _emptyJoints; }
 
         if (leftIsHand)
         {
@@ -271,7 +272,7 @@ public class VRController : MonoBehaviour
                 i++;
             }
         }
-        else { message.leftHand.jointPos = new float[0]; }  // JsonUtility 不序列化 null，用空数组代替
+        else { message.leftHand.jointPos = _emptyJoints; }
 
         if (LRinverse)
         {
