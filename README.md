@@ -6,9 +6,21 @@
 
 ## 快速开始
 
+### 方式一：直接安装 Release APK（推荐）
+
+1. 前往 [Releases](../../releases/latest) 下载最新 `quest_tele.apk`
+2. Quest 开启开发者模式，通过 USB 连接电脑
+3. 执行安装：
+   ```bash
+   adb install quest_tele.apk
+   ```
+4. 参考使用文档配置 IP 并启动 → [Docs/User_Guide.md](./Docs/User_Guide.md)
+
+### 方式二：从源码构建
+
 | 步骤 | 文档 |
 |------|------|
-| 编译 APK / 从源码构建 | [Docs/Build.md](./Docs/Build.md) |
+| 编译 APK | [Docs/Build.md](./Docs/Build.md) |
 | APP 使用与坐标校准 | [Docs/User_Guide.md](./Docs/User_Guide.md) |
 
 ---
