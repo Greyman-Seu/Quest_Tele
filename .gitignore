@@ -27,3 +27,12 @@ __pycache__/
 ProjectSettings/AutoStreamingSettings.asset
 ProjectSettings/TextureManagerSettings.asset
 ProjectSettings/ThreadInfoSettings.asset
+
+# IDE
+.vscode/
+
+# 本地 OVR 包缓存（通过 UPM 获取，无需入库）
+OculusPackages/
+
+# APK 构建产物（发布至 GitHub Releases）
+*.apk
